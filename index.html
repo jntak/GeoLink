@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GeoLink</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: linear-gradient(135deg, #d0e4ff, #f8faff);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    h1 {
+      color: #1f3b73;
+      margin-bottom: 10px;
+      font-size: 28px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h1::before {
+      content: "🌍";
+      font-size: 30px;
+    }
+
+    p.subtitle {
+      color: #555;
+      margin-bottom: 20px;
+      font-size: 14px;
+      text-align: center;
+    }
+
+    form {
+      background-color: white;
+      padding: 25px 30px;
+      border-radius: 14px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+      width: 320px;
+      position: relative;
+    }
+
+    label {
+      display: block;
+      margin-top: 12px;
+      font-weight: bold;
+      color: #333;
+    }
+
+    input {
+      width: 100%;
+      padding: 8px;
+      margin-top: 4px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 18px;
+      background-color: #0078d7;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background-color 0.2s ease, transform 0.1s ease;
+    }
+
+    button:hover {
+      background-color: #005fa3;
+    }
+
+    button.loading {
+      cursor: wait;
+      background-color: #004d88;
+    }
+
+    .spinner {
+      border: 2px solid #f3f3f3;
+      border-top: 2px solid #fff;
+      border-right: 2px solid #fff;
+      border-radius: 50%;
+      width: 16px;
+      height: 16px;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .result-card {
+      background: #e9f5ff;
+      border: 1px solid #b6e0ff;
+      border-radius: 8px;
+      padding: 10px 15px;
+      margin-top: 18px;
+      text-align: center;
+      font-size: 14px;
+      color: #114d8c;
+      animation: fadeIn 0.5s ease forwards;
+    }
+
+    .error {
+      background: #ffe6e6;
+      border: 1px solid #ffb3b3;
+      color: #b00020;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .globe {
+      position: absolute;
+      top: -30px;
+      right: -40px;
+      font-size: 60px;
+      opacity: 0.15;
+      animation: slowSpin 20s linear infinite;
+    }
+
+    @keyframes slowSpin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <h1>GeoLink</h1>
+  <p class="subtitle">Compare the distance between two locations anywhere on Earth.</p>
+  <form id="locationForm">
+    <div class="globe">🌐</div>
+
+    <label for="loc1">Location 1</label>
+    <input type="text" id="loc1" placeholder="e.g. New York" required>
+
+    <label for="loc2">Location 2</label>
+    <input type="text" id="loc2" placeholder="e.g. Los Angeles" required>
+
+    <button id="submitBtn" type="submit">Calculate Distance</button>
+    <div id="responseMessage" class="message"></div>
+  </form>
+
+  <script>
+    const form = document.getElementById('locationForm');
+    const messageDiv = document.getElementById('responseMessage');
+    const submitBtn = document.getElementById('submitBtn');
+
+    // Geocoding function
+    async function getCoordinates(city) {
+      const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`);
+      const data = await res.json();
+
+      if (!data.results || data.results.length === 0) {
+        throw new Error(`Couldn't find "${city}" on the map.`);
+      }
+
+      const result = data.results[0];
+      const { name, country, latitude, longitude } = result;
+
+      // Fuzzy check if the match is not exact, asks user to clarify
+      const isExact = name.toLowerCase() === city.toLowerCase();
+      if (!isExact) {
+        throw new Error(`"${city}" matched "${name}, ${country}". Please be more specific.`);
+      }
+
+      return { lat: latitude, lon: longitude, name, country };
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      messageDiv.textContent = "";
+      messageDiv.className = "";
+      submitBtn.disabled = true;
+      submitBtn.classList.add('loading');
+      submitBtn.innerHTML = '<span class="spinner"></span>Calculating...';
+
+      const loc1 = document.getElementById('loc1').value.trim();
+      const loc2 = document.getElementById('loc2').value.trim();
+
+      try {
+        // Get coordinates safely for both inputs
+        const [coord1, coord2] = await Promise.all([getCoordinates(loc1), getCoordinates(loc2)]);
+
+        const payload = {
+          lat1: coord1.lat,
+          lon1: coord1.lon,
+          lat2: coord2.lat,
+          lon2: coord2.lon,
+          loc1: coord1.name,
+          loc2: coord2.name
+        };
+
+        // Send payload to AWS API Gateway
+        const response = await fetch("https://6q0yg9p0gk.execute-api.eu-central-1.amazonaws.com/dev/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error(`Server error: ${response.status}`);
+        const result = await response.json();
+        const message = JSON.parse(result.body);
+
+        messageDiv.className = "result-card";
+        messageDiv.textContent = message;
+      } catch (error) {
+        console.error(error);
+        messageDiv.className = "result-card error";
+        messageDiv.textContent = error.message;
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('loading');
+        submitBtn.textContent = 'Calculate Distance';
+      }
+    });
+  </script>
+</body>
+</html>
