@@ -4,7 +4,7 @@
 
 ## Overview
 
-This project demonstrates a **fully serverless architecture** on AWS.
+A **fully serverless app** on AWS.
 It consists of a simple frontend hosted on **AWS Amplify**, which calls an **API Gateway endpoint** to trigger an **AWS Lambda function** that computes the geographical distance between two points.
 Each request and result is logged to **DynamoDB**, using IAM-controlled access policies.
 
